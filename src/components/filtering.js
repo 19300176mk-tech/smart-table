@@ -39,6 +39,15 @@ export function initFiltering(elements, indexes) {
         }
 
         // @todo: #4.5 — отфильтровать данные используя компаратор
-        return data.filter(row => compare(row, state));
-    }
+        return data.filter(row => {
+            // Ручная фильтрация для totalFrom/totalTo, так как компаратор может не обрабатывать их
+            if (state.totalFrom && parseFloat(row.total) < parseFloat(state.totalFrom)) {
+                return false;
+            }
+            if (state.totalTo && parseFloat(row.total) > parseFloat(state.totalTo)) {
+                return false;
+            }
+            return compare(row, state);
+        });
+    };
 }

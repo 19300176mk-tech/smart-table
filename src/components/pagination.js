@@ -14,11 +14,13 @@ export const initPagination = ({pages, fromRow, toRow, totalRows}, createPage) =
         let page = state.page;
 
         // @todo: #2.6 — обработать действия
-        if (action) switch(action.name) {
-            case 'prev': page = Math.max(1, page - 1); break;
-            case 'next': page = Math.min(pageCount, page + 1); break;
-            case 'first': page = 1; break;
-            case 'last': page = pageCount; break;
+        if (action) {
+            switch(action.name) {
+                case 'prev': page = Math.max(1, page - 1); break;
+                case 'next': page = Math.min(pageCount, page + 1); break;
+                case 'first': page = 1; break;
+                case 'last': page = pageCount; break;
+            }
         }
 
         // @todo: #2.4 — получить список видимых страниц и вывести их
@@ -26,18 +28,25 @@ export const initPagination = ({pages, fromRow, toRow, totalRows}, createPage) =
             const visiblePages = getPages(page, pageCount, 5);
             const pageButtons = visiblePages.map(pageNumber => {
                 const el = pageTemplate.cloneNode(true);
+                const input = el.querySelector('input');
+                // Добавляем обработчик для радио-кнопок
+                if (input) {
+                    input.addEventListener('change', () => {
+                        // Это событие будет обработано формой
+                    });
+                }
                 return createPage(el, pageNumber, pageNumber === page);
             });
-            pages.append(...pageButtons);
+            pages.replaceChildren(...pageButtons);
         }
 
         // @todo: #2.5 — обновить статус пагинации
-        fromRow.textContent = (page - 1) * rowsPerPage + 1;
+        fromRow.textContent = data.length ? (page - 1) * rowsPerPage + 1 : 0;
         toRow.textContent = Math.min((page * rowsPerPage), data.length);
         totalRows.textContent = data.length;
 
         // @todo: #2.2 — посчитать сколько строк нужно пропустить и получить срез данных
         const skip = (page - 1) * rowsPerPage;
         return data.slice(skip, skip + rowsPerPage);
-    }
-}
+    };
+};
