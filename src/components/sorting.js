@@ -10,11 +10,11 @@ export function initSorting(columns) {
             field = action.dataset.field;
             order = action.dataset.value;
 
-            columns.forEach(column => {
+            for (const column of columns) {
                 if (column.dataset.field !== action.dataset.field) {
                     column.dataset.value = 'none';
                 }
-            });
+            }
         } else {
             for (const column of columns) {
                 if (column.dataset.value !== 'none') {
@@ -25,8 +25,15 @@ export function initSorting(columns) {
             }
         }
 
-        const sort = (field && order !== 'none') ? `${field}:${order}` : null;
-        
-        return sort ? Object.assign({}, query, { sort }) : query;
+        if (field && order && order !== 'none') {
+            const sortValue = `${field}:${order}`;
+            return {
+                ...query,
+                sort: sortValue
+            };
+        }
+
+        const { sort, ...rest } = query;
+        return rest;
     };
 }

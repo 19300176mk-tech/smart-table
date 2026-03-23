@@ -1,24 +1,22 @@
 export function initFiltering(elements) {
     const updateIndexes = (elements, indexes) => {
-        Object.keys(indexes).forEach((elementName) => {
-            const select = elements[elementName];
-            if (select) {
-                const currentValue = select.value;
-                select.innerHTML = '<option value="" selected>—</option>';
-                
-                const sellersList = Object.values(indexes[elementName]);
-                sellersList.forEach(name => {
-                    const option = document.createElement('option');
-                    option.value = name;
-                    option.textContent = name;
-                    select.appendChild(option);
-                });
-                
-                if (currentValue && sellersList.includes(currentValue)) {
-                    select.value = currentValue;
-                }
+        const select = elements.searchBySeller;
+        if (select && indexes.searchBySeller) {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="" selected>—</option>';
+            
+            const sellersList = Object.values(indexes.searchBySeller);
+            sellersList.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            
+            if (currentValue && sellersList.includes(currentValue)) {
+                select.value = currentValue;
             }
-        });
+        }
     };
 
     const applyFiltering = (query, state, action) => {
@@ -33,28 +31,38 @@ export function initFiltering(elements) {
                     }
                 }
             }
-            return query;
+
+            const { filter, ...rest } = query;
+            return rest;
         }
 
-        const filter = {};
+        const filters = {};
+        
+        if (state.date && state.date.trim()) {
+            filters.date = state.date.trim();
+        }
+        if (state.customer && state.customer.trim()) {
+            filters.customer = state.customer.trim();
+        }
+        if (state.seller && state.seller !== '—' && state.seller.trim()) {
+            filters.seller = state.seller.trim();
+        }
+        if (state.totalFrom && state.totalFrom.trim()) {
+            filters.total_from = state.totalFrom.trim();
+        }
+        if (state.totalTo && state.totalTo.trim()) {
+            filters.total_to = state.totalTo.trim();
+        }
 
-        if (state.date) {
-            filter['filter[date]'] = state.date;
-        }
-        if (state.customer) {
-            filter['filter[customer]'] = state.customer;
-        }
-        if (state.seller && state.seller !== '—') {
-            filter['filter[seller]'] = state.seller;
-        }
-        if (state.totalFrom) {
-            filter['filter[total_from]'] = state.totalFrom;
-        }
-        if (state.totalTo) {
-            filter['filter[total_to]'] = state.totalTo;
+        if (Object.keys(filters).length > 0) {
+            return {
+                ...query,
+                filter: filters
+            };
         }
 
-        return Object.keys(filter).length ? Object.assign({}, query, filter) : query;
+        const { filter, ...rest } = query;
+        return rest;
     };
 
     return {

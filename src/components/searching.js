@@ -5,12 +5,20 @@ export function initSearching(searchField) {
             if (searchInput) {
                 searchInput.value = '';
             }
-            return query;
+
+            const { search, ...rest } = query;
+            return rest;
         }
         
         const searchValue = state[searchField];
-        return searchValue ? Object.assign({}, query, {
-            search: searchValue
-        }) : query;
+        if (searchValue && searchValue.trim()) {
+            return {
+                ...query,
+                search: searchValue.trim()
+            };
+        }
+
+        const { search, ...rest } = query;
+        return rest;
     };
 }

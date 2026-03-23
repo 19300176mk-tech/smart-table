@@ -17,7 +17,7 @@ function collectState() {
     const state = processFormData(formData);
 
     const rowsPerPage = parseInt(state.rowsPerPage) || 10;
-    const page = parseInt(state.page ?? 1);
+    const page = parseInt(state.page) || 1;
 
     return {
         ...state,
@@ -27,6 +27,8 @@ function collectState() {
 }
 
 async function render(action) {
+    console.log('Render called, action:', action);
+    
     const state = collectState();
     let query = {};
     
@@ -35,10 +37,17 @@ async function render(action) {
     query = applySearching(query, state, action);
     query = applySorting(query, state, action);
     
-    const { total, items } = await api.getRecords(query);
+    console.log('Final query:', query);
     
-    updatePagination(total, query);
-    sampleTable.render(items);
+    try {
+        const { total, items } = await api.getRecords(query);
+        console.log('Total:', total, 'Items count:', items.length);
+        
+        updatePagination(total, query);
+        sampleTable.render(items);
+    } catch (error) {
+        console.error('Render error:', error);
+    }
 }
 
 const sampleTable = initTable({
@@ -59,9 +68,11 @@ const { applyPagination, updatePagination } = initPagination(
     (element, page, isCurrent) => {
         const input = element.querySelector('input');
         const label = element.querySelector('span');
-        if (input) input.value = page;
+        if (input) {
+            input.value = page;
+            input.checked = isCurrent;
+        }
         if (label) label.textContent = page;
-        if (isCurrent && input) input.checked = true;
         return element;
     }
 );
@@ -69,15 +80,21 @@ const { applyPagination, updatePagination } = initPagination(
 const { applyFiltering, updateIndexes } = initFiltering(sampleTable.filter.elements);
 
 async function init() {
-    const indexes = await api.getIndexes();
-    
-    if (indexes && indexes.sellers) {
-        updateIndexes(sampleTable.filter.elements, {
-            searchBySeller: indexes.sellers
-        });
+    console.log('Initializing...');
+    try {
+        const indexes = await api.getIndexes();
+        console.log('Indexes loaded:', indexes);
+        
+        if (indexes && indexes.sellers) {
+            updateIndexes(sampleTable.filter.elements, {
+                searchBySeller: indexes.sellers
+            });
+        }
+        
+        await render();
+    } catch (error) {
+        console.error('Init error:', error);
     }
-    
-    await render();
 }
 
 const appRoot = document.querySelector('#app');
@@ -85,4 +102,4 @@ if (appRoot) {
     appRoot.appendChild(sampleTable.container);
 }
 
-init().catch(console.error);
+init();
