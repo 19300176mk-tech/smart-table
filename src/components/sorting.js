@@ -26,13 +26,9 @@ export function initSorting(columns) {
         }
 
         if (field && order && order !== 'none') {
-            const sortValue = `${field}:${order}`;
-            return {
-                ...query,
-                sort: sortValue
-            };
+            return { ...query, sort: `${field}:${order}` };
         }
-
+        
         const { sort, ...rest } = query;
         return rest;
     };

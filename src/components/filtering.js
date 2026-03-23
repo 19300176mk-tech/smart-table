@@ -31,7 +31,6 @@ export function initFiltering(elements) {
                     }
                 }
             }
-
             const { filter, ...rest } = query;
             return rest;
         }
@@ -55,12 +54,9 @@ export function initFiltering(elements) {
         }
 
         if (Object.keys(filters).length > 0) {
-            return {
-                ...query,
-                filter: filters
-            };
+            return { ...query, filter: filters };
         }
-
+        
         const { filter, ...rest } = query;
         return rest;
     };

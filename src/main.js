@@ -27,8 +27,6 @@ function collectState() {
 }
 
 async function render(action) {
-    console.log('Render called, action:', action);
-    
     const state = collectState();
     let query = {};
     
@@ -37,17 +35,10 @@ async function render(action) {
     query = applySearching(query, state, action);
     query = applySorting(query, state, action);
     
-    console.log('Final query:', query);
+    const { total, items } = await api.getRecords(query);
     
-    try {
-        const { total, items } = await api.getRecords(query);
-        console.log('Total:', total, 'Items count:', items.length);
-        
-        updatePagination(total, query);
-        sampleTable.render(items);
-    } catch (error) {
-        console.error('Render error:', error);
-    }
+    updatePagination(total, query);
+    sampleTable.render(items);
 }
 
 const sampleTable = initTable({
@@ -80,21 +71,15 @@ const { applyPagination, updatePagination } = initPagination(
 const { applyFiltering, updateIndexes } = initFiltering(sampleTable.filter.elements);
 
 async function init() {
-    console.log('Initializing...');
-    try {
-        const indexes = await api.getIndexes();
-        console.log('Indexes loaded:', indexes);
-        
-        if (indexes && indexes.sellers) {
-            updateIndexes(sampleTable.filter.elements, {
-                searchBySeller: indexes.sellers
-            });
-        }
-        
-        await render();
-    } catch (error) {
-        console.error('Init error:', error);
+    const indexes = await api.getIndexes();
+    
+    if (indexes && indexes.sellers) {
+        updateIndexes(sampleTable.filter.elements, {
+            searchBySeller: indexes.sellers
+        });
     }
+    
+    await render();
 }
 
 const appRoot = document.querySelector('#app');
@@ -102,4 +87,4 @@ if (appRoot) {
     appRoot.appendChild(sampleTable.container);
 }
 
-init();
+init().catch(console.error);
