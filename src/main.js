@@ -1,28 +1,22 @@
-import './fonts/ys-display/fonts.css'
-import './style.css'
+import './fonts/ys-display/fonts.css';
+import './style.css';
 
-import {data as sourceData} from "./data/dataset_1.js";
+import initData from "./data.js";
+import { processFormData } from "./lib/utils.js";
 
-import {initData} from "./data.js";
-import {processFormData} from "./lib/utils.js";
-
-import {initTable} from "./components/table.js";
-// @todo: подключение
+import { initTable } from "./components/table.js";
 import { initPagination } from "./components/pagination.js";
 import { initSorting } from "./components/sorting.js";
 import { initFiltering } from "./components/filtering.js";
 import { initSearching } from "./components/searching.js";
-// Исходные данные используемые в render()
-const {data, ...indexes} = initData(sourceData);
 
-/**
- * Сбор и обработка полей из таблицы
- * @returns {Object}
- */
+const api = initData();
+
 function collectState() {
-    const state = processFormData(new FormData(sampleTable.container));
+    const formData = new FormData(sampleTable.container);
+    const state = processFormData(formData);
 
-    const rowsPerPage = parseInt(state.rowsPerPage);
+    const rowsPerPage = parseInt(state.rowsPerPage) || 10;
     const page = parseInt(state.page ?? 1);
 
     return {
@@ -32,20 +26,19 @@ function collectState() {
     };
 }
 
-/**
- * Перерисовка состояния таблицы при любых изменениях
- * @param {HTMLButtonElement?} action
- */
-function render(action) {
-    let state = collectState(); // состояние полей из таблицы
-    let result = [...data]; // копируем для последующего изменения
-    // @todo: использование
-    result = applySearch(result, state, action);
-    result = applyFiltering(result, state, action);
-    result = applySorting(result, state, action);
-    result = applyPagination(result, state, action);
-
-    sampleTable.render(result)
+async function render(action) {
+    const state = collectState();
+    let query = {};
+    
+    query = applyPagination(query, state, action);
+    query = applyFiltering(query, state, action);
+    query = applySearching(query, state, action);
+    query = applySorting(query, state, action);
+    
+    const { total, items } = await api.getRecords(query);
+    
+    updatePagination(total, query);
+    sampleTable.render(items);
 }
 
 const sampleTable = initTable({
@@ -55,28 +48,41 @@ const sampleTable = initTable({
     after: ['pagination']
 }, render);
 
-// @todo: инициализация
-const applySearch = initSearching('search');
-const applyFiltering = initFiltering(sampleTable.filter.elements, {
-    searchBySeller: indexes.sellers
-});
+const applySearching = initSearching('search');
 const applySorting = initSorting([
     sampleTable.header.elements.sortByDate,
     sampleTable.header.elements.sortByTotal
 ]);
-const applyPagination = initPagination(
+
+const { applyPagination, updatePagination } = initPagination(
     sampleTable.pagination.elements,
-    (el, page, isCurrent) => {
-        const input = el.querySelector('input');
-        const label = el.querySelector('span');
-        input.value = page;
-        input.checked = isCurrent;
-        label.textContent = page;
-        return el;
+    (element, page, isCurrent) => {
+        const input = element.querySelector('input');
+        const label = element.querySelector('span');
+        if (input) input.value = page;
+        if (label) label.textContent = page;
+        if (isCurrent && input) input.checked = true;
+        return element;
     }
 );
 
-const appRoot = document.querySelector('#app');
-appRoot.appendChild(sampleTable.container);
+const { applyFiltering, updateIndexes } = initFiltering(sampleTable.filter.elements);
 
-render();
+async function init() {
+    const indexes = await api.getIndexes();
+    
+    if (indexes && indexes.sellers) {
+        updateIndexes(sampleTable.filter.elements, {
+            searchBySeller: indexes.sellers
+        });
+    }
+    
+    await render();
+}
+
+const appRoot = document.querySelector('#app');
+if (appRoot) {
+    appRoot.appendChild(sampleTable.container);
+}
+
+init().catch(console.error);

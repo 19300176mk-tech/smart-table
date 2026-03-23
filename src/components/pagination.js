@@ -1,52 +1,66 @@
-import {getPages} from "../lib/utils.js";
+import { getPages } from "../lib/utils.js";
 
-export const initPagination = ({pages, fromRow, toRow, totalRows}, createPage) => {
-    // @todo: #2.3 — подготовить шаблон кнопки для страницы и очистить контейнер
+export const initPagination = ({ pages, fromRow, toRow, totalRows }, createPage) => {
+    let pageCount = 1;
+    
     const pageTemplate = pages.firstElementChild?.cloneNode(true);
     if (pageTemplate) {
         pages.innerHTML = '';
     }
 
-    return (data, state, action) => {
-        // @todo: #2.1 — посчитать количество страниц, объявить переменные и константы
-        const rowsPerPage = state.rowsPerPage;
-        const pageCount = Math.ceil(data.length / rowsPerPage);
+    const applyPagination = (query, state, action) => {
+        const limit = state.rowsPerPage;
         let page = state.page;
 
-        // @todo: #2.6 — обработать действия
         if (action) {
-            switch(action.name) {
-                case 'prev': page = Math.max(1, page - 1); break;
-                case 'next': page = Math.min(pageCount, page + 1); break;
-                case 'first': page = 1; break;
-                case 'last': page = pageCount; break;
+            switch (action.name) {
+                case 'prev':
+                    page = Math.max(1, page - 1);
+                    break;
+                case 'next':
+                    page = Math.min(pageCount, page + 1);
+                    break;
+                case 'first':
+                    page = 1;
+                    break;
+                case 'last':
+                    page = pageCount;
+                    break;
+                case 'rowsPerPage':
+                    page = 1;
+                    break;
             }
         }
 
-        // @todo: #2.4 — получить список видимых страниц и вывести их
+        return Object.assign({}, query, {
+            limit: limit,
+            page: page - 1
+        });
+    };
+
+    const updatePagination = (total, { limit, page }) => {
+        const currentPage = page + 1;
+        pageCount = Math.ceil(total / limit) || 1;
+        
+        const from = total ? (currentPage - 1) * limit + 1 : 0;
+        const to = Math.min(currentPage * limit, total);
+        
+        fromRow.textContent = from;
+        toRow.textContent = to;
+        totalRows.textContent = total;
+        
         if (pageTemplate) {
-            const visiblePages = getPages(page, pageCount, 5);
+            const visiblePages = getPages(currentPage, pageCount, 5);
             const pageButtons = visiblePages.map(pageNumber => {
-                const el = pageTemplate.cloneNode(true);
-                const input = el.querySelector('input');
-                // Добавляем обработчик для радио-кнопок
-                if (input) {
-                    input.addEventListener('change', () => {
-                        // Это событие будет обработано формой
-                    });
-                }
-                return createPage(el, pageNumber, pageNumber === page);
+                const element = pageTemplate.cloneNode(true);
+                return createPage(element, pageNumber, pageNumber === currentPage);
             });
             pages.replaceChildren(...pageButtons);
         }
+    };
 
-        // @todo: #2.5 — обновить статус пагинации
-        fromRow.textContent = data.length ? (page - 1) * rowsPerPage + 1 : 0;
-        toRow.textContent = Math.min((page * rowsPerPage), data.length);
-        totalRows.textContent = data.length;
-
-        // @todo: #2.2 — посчитать сколько строк нужно пропустить и получить срез данных
-        const skip = (page - 1) * rowsPerPage;
-        return data.slice(skip, skip + rowsPerPage);
+    return {
+        applyPagination,
+        updatePagination
     };
 };

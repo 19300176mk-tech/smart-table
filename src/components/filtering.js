@@ -1,53 +1,64 @@
-import {createComparison, defaultRules} from "../lib/compare.js";
+export function initFiltering(elements) {
+    const updateIndexes = (elements, indexes) => {
+        Object.keys(indexes).forEach((elementName) => {
+            const select = elements[elementName];
+            if (select) {
+                const currentValue = select.value;
+                select.innerHTML = '<option value="" selected>—</option>';
+                
+                const sellersList = Object.values(indexes[elementName]);
+                sellersList.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    select.appendChild(option);
+                });
+                
+                if (currentValue && sellersList.includes(currentValue)) {
+                    select.value = currentValue;
+                }
+            }
+        });
+    };
 
-// @todo: #4.3 — настроить компаратор
-const compare = createComparison(defaultRules);
-
-export function initFiltering(elements, indexes) {
-    // @todo: #4.1 — заполнить выпадающие списки опциями
-    Object.keys(indexes).forEach((elementName) => {
-        if (elements[elementName]) {
-            const options = Object.values(indexes[elementName]).map(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                return option;
-            });
-            elements[elementName].append(...options);
-        }
-    });
-
-    return (data, state, action) => {
-        // @todo: #4.2 — обработать очистку поля
+    const applyFiltering = (query, state, action) => {
         if (action?.name === 'clear') {
-            const fieldName = action.dataset.field;
+            const fieldName = action.dataset?.field;
             if (fieldName) {
                 const container = action.closest('.filter-wrapper, .dropdown-select, .range-inputs');
                 if (container) {
                     const input = container.querySelector('input, select');
                     if (input) {
                         input.value = '';
-                        if (fieldName === 'total') {
-                            state.totalFrom = '';
-                            state.totalTo = '';
-                        } else {
-                            state[fieldName] = '';
-                        }
                     }
                 }
             }
+            return query;
         }
 
-        // @todo: #4.5 — отфильтровать данные используя компаратор
-        return data.filter(row => {
-            // Ручная фильтрация для totalFrom/totalTo, так как компаратор может не обрабатывать их
-            if (state.totalFrom && parseFloat(row.total) < parseFloat(state.totalFrom)) {
-                return false;
-            }
-            if (state.totalTo && parseFloat(row.total) > parseFloat(state.totalTo)) {
-                return false;
-            }
-            return compare(row, state);
-        });
+        const filter = {};
+
+        if (state.date) {
+            filter['filter[date]'] = state.date;
+        }
+        if (state.customer) {
+            filter['filter[customer]'] = state.customer;
+        }
+        if (state.seller && state.seller !== '—') {
+            filter['filter[seller]'] = state.seller;
+        }
+        if (state.totalFrom) {
+            filter['filter[total_from]'] = state.totalFrom;
+        }
+        if (state.totalTo) {
+            filter['filter[total_to]'] = state.totalTo;
+        }
+
+        return Object.keys(filter).length ? Object.assign({}, query, filter) : query;
+    };
+
+    return {
+        updateIndexes,
+        applyFiltering
     };
 }
