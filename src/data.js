@@ -10,18 +10,10 @@ let recordsCache = null;
 const mapRecord = (item) => ({
     id: item.receipt_id,
     date: item.date,
-    seller: sellersCache[item.seller_id],
-    customer: customersCache[item.customer_id],
+    seller: sellersCache[item.seller_id] || 'Unknown',
+    customer: customersCache[item.customer_id] || 'Unknown',
     total: item.total_amount
 });
-
-const convertToArray = (data) => {
-    if (Array.isArray(data)) return data;
-    if (data && typeof data === 'object') {
-        return Object.values(data);
-    }
-    return [];
-};
 
 const getIndexes = async () => {
     if (!sellersCache || !customersCache) {
@@ -31,27 +23,26 @@ const getIndexes = async () => {
                 fetch(`${BASE_URL}/customers`)
             ]);
             
-            if (!sellersRes.ok) throw new Error(`Sellers HTTP ${sellersRes.status}`);
-            if (!customersRes.ok) throw new Error(`Customers HTTP ${customersRes.status}`);
-            
-            let sellersRaw = await sellersRes.json();
-            let customersRaw = await customersRes.json();
-            
-            sellersRaw = convertToArray(sellersRaw);
-            customersRaw = convertToArray(customersRaw);
-            
-            if (sellersRaw.length === 0) throw new Error('Sellers array is empty');
-            if (customersRaw.length === 0) throw new Error('Customers array is empty');
-            
-            sellersCache = makeIndex(sellersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
-            customersCache = makeIndex(customersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
-            
-            console.log('✅ Справочники загружены с сервера:', {
-                sellers: Object.keys(sellersCache).length,
-                customers: Object.keys(customersCache).length
+            const sellersRaw = await sellersRes.json();
+            const customersRaw = await customersRes.json();
+
+            sellersCache = {};
+            Object.keys(sellersRaw).forEach(key => {
+                sellersCache[key] = sellersRaw[key];
             });
+            
+            customersCache = {};
+            Object.keys(customersRaw).forEach(key => {
+                customersCache[key] = customersRaw[key];
+            });
+            
+            if (Object.keys(sellersCache).length === 0) {
+                throw new Error('Sellers empty');
+            }
+            if (Object.keys(customersCache).length === 0) {
+                throw new Error('Customers empty');
+            }
         } catch (error) {
-            console.warn('Ошибка загрузки справочников, использую локальные', error.message);
             const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
             const localCustomers = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
             sellersCache = localSellers;
@@ -66,25 +57,20 @@ const getAllRecords = async () => {
     
     try {
         const response = await fetch(`${BASE_URL}/records`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
         const data = await response.json();
-
-        let items = data.items || data;
-        items = convertToArray(items);
         
-        if (items.length === 0) throw new Error('No records');
+        let items = data.items || data;
+        if (!Array.isArray(items)) {
+            items = Object.values(items);
+        }
         
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
         
         recordsCache = items.map(mapRecord);
-        console.log('✅ Записи загружены с сервера:', recordsCache.length);
         return recordsCache;
     } catch (error) {
-        console.warn('Ошибка загрузки с сервера, использую локальные данные', error.message);
-        
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
@@ -92,19 +78,18 @@ const getAllRecords = async () => {
         recordsCache = sourceData.purchase_records.map(item => ({
             id: item.receipt_id,
             date: item.date,
-            seller: sellersCache[item.seller_id],
-            customer: customersCache[item.customer_id],
+            seller: sellersCache[item.seller_id] || 'Unknown',
+            customer: customersCache[item.customer_id] || 'Unknown',
             total: item.total_amount
         }));
         
-        console.log('📁 Используются локальные данные:', recordsCache.length);
         return recordsCache;
     }
 };
 
 const getRecords = async (query = {}) => {
     let items = await getAllRecords();
-
+    
     if (query.filter) {
         const f = query.filter;
         items = items.filter(item => {
@@ -116,7 +101,7 @@ const getRecords = async (query = {}) => {
             return true;
         });
     }
-
+    
     if (query.search) {
         const s = query.search.toLowerCase();
         items = items.filter(item =>
@@ -125,7 +110,7 @@ const getRecords = async (query = {}) => {
             item.seller.toLowerCase().includes(s)
         );
     }
-
+    
     if (query.sort) {
         const [field, order] = query.sort.split(':');
         items.sort((a, b) => {
@@ -134,7 +119,7 @@ const getRecords = async (query = {}) => {
             return 0;
         });
     }
-
+    
     const limit = parseInt(query.limit) || 10;
     const page = parseInt(query.page) || 0;
     const start = page * limit;
