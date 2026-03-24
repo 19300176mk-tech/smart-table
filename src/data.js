@@ -22,15 +22,32 @@ const getIndexes = async () => {
                 fetch(`${BASE_URL}/sellers`),
                 fetch(`${BASE_URL}/customers`)
             ]);
+            
+            if (!sellersRes.ok) throw new Error(`Sellers HTTP ${sellersRes.status}`);
+            if (!customersRes.ok) throw new Error(`Customers HTTP ${customersRes.status}`);
+            
             const sellersRaw = await sellersRes.json();
             const customersRaw = await customersRes.json();
+
+            if (!Array.isArray(sellersRaw)) {
+                console.warn('Sellers data is not an array, using local');
+                throw new Error('Sellers not array');
+            }
+            if (!Array.isArray(customersRaw)) {
+                console.warn('Customers data is not an array, using local');
+                throw new Error('Customers not array');
+            }
             
             sellersCache = makeIndex(sellersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
             customersCache = makeIndex(customersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
+            
+            console.log('✅ Справочники загружены с сервера');
         } catch (error) {
-            console.warn('Ошибка загрузки справочников, использую локальные', error);
-            sellersCache = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
-            customersCache = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+            console.warn('Ошибка загрузки справочников, использую локальные', error.message);
+            const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
+            const localCustomers = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+            sellersCache = localSellers;
+            customersCache = localCustomers;
         }
     }
     return { sellers: sellersCache, customers: customersCache };
@@ -42,32 +59,42 @@ const getAllRecords = async () => {
     try {
         const response = await fetch(`${BASE_URL}/records`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
         const data = await response.json();
+
+        if (!data.items || !Array.isArray(data.items)) {
+            throw new Error('Invalid records data structure');
+        }
         
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
         
         recordsCache = data.items.map(mapRecord);
+        console.log('✅ Записи загружены с сервера:', recordsCache.length);
         return recordsCache;
     } catch (error) {
-        console.warn('Ошибка загрузки с сервера, использую локальные данные', error);
-        const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
-        const localCustomers = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+        console.warn('Ошибка загрузки с сервера, использую локальные данные', error.message);
+        
+        if (!sellersCache || !customersCache) {
+            await getIndexes();
+        }
+
         recordsCache = sourceData.purchase_records.map(item => ({
             id: item.receipt_id,
             date: item.date,
-            seller: localSellers[item.seller_id],
-            customer: localCustomers[item.customer_id],
+            seller: sellersCache[item.seller_id],
+            customer: customersCache[item.customer_id],
             total: item.total_amount
         }));
+        
+        console.log('📁 Используются локальные данные:', recordsCache.length);
         return recordsCache;
     }
 };
 
 const getRecords = async (query = {}) => {
     let items = await getAllRecords();
-    const total = items.length;
 
     if (query.filter) {
         const f = query.filter;
