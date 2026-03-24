@@ -15,6 +15,14 @@ const mapRecord = (item) => ({
     total: item.total_amount
 });
 
+const convertToArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+        return Object.values(data);
+    }
+    return [];
+};
+
 const getIndexes = async () => {
     if (!sellersCache || !customersCache) {
         try {
@@ -26,22 +34,22 @@ const getIndexes = async () => {
             if (!sellersRes.ok) throw new Error(`Sellers HTTP ${sellersRes.status}`);
             if (!customersRes.ok) throw new Error(`Customers HTTP ${customersRes.status}`);
             
-            const sellersRaw = await sellersRes.json();
-            const customersRaw = await customersRes.json();
-
-            if (!Array.isArray(sellersRaw)) {
-                console.warn('Sellers data is not an array, using local');
-                throw new Error('Sellers not array');
-            }
-            if (!Array.isArray(customersRaw)) {
-                console.warn('Customers data is not an array, using local');
-                throw new Error('Customers not array');
-            }
+            let sellersRaw = await sellersRes.json();
+            let customersRaw = await customersRes.json();
+            
+            sellersRaw = convertToArray(sellersRaw);
+            customersRaw = convertToArray(customersRaw);
+            
+            if (sellersRaw.length === 0) throw new Error('Sellers array is empty');
+            if (customersRaw.length === 0) throw new Error('Customers array is empty');
             
             sellersCache = makeIndex(sellersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
             customersCache = makeIndex(customersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
             
-            console.log('✅ Справочники загружены с сервера');
+            console.log('✅ Справочники загружены с сервера:', {
+                sellers: Object.keys(sellersCache).length,
+                customers: Object.keys(customersCache).length
+            });
         } catch (error) {
             console.warn('Ошибка загрузки справочников, использую локальные', error.message);
             const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
@@ -62,15 +70,16 @@ const getAllRecords = async () => {
         
         const data = await response.json();
 
-        if (!data.items || !Array.isArray(data.items)) {
-            throw new Error('Invalid records data structure');
-        }
+        let items = data.items || data;
+        items = convertToArray(items);
+        
+        if (items.length === 0) throw new Error('No records');
         
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
         
-        recordsCache = data.items.map(mapRecord);
+        recordsCache = items.map(mapRecord);
         console.log('✅ Записи загружены с сервера:', recordsCache.length);
         return recordsCache;
     } catch (error) {
@@ -79,7 +88,7 @@ const getAllRecords = async () => {
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
-
+        
         recordsCache = sourceData.purchase_records.map(item => ({
             id: item.receipt_id,
             date: item.date,
