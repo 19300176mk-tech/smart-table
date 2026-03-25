@@ -10,45 +10,67 @@ let recordsCache = null;
 const mapRecord = (item) => ({
     id: item.receipt_id,
     date: item.date,
-    seller: sellersCache[item.seller_id] || 'Unknown',
-    customer: customersCache[item.customer_id] || 'Unknown',
+    seller: sellersCache?.[item.seller_id] || 'Unknown',
+    customer: customersCache?.[item.customer_id] || 'Unknown',
     total: item.total_amount
 });
 
-const getIndexes = async () => {
-    if (!sellersCache || !customersCache) {
-        try {
-            const [sellersRes, customersRes] = await Promise.all([
-                fetch(`${BASE_URL}/sellers`),
-                fetch(`${BASE_URL}/customers`)
-            ]);
-            
-            const sellersRaw = await sellersRes.json();
-            const customersRaw = await customersRes.json();
+const buildIndexFromArray = (arr, idField, valueGetter) => {
+    const result = {};
+    arr.forEach(item => {
+        result[item[idField]] = valueGetter(item);
+    });
+    return result;
+};
 
-            sellersCache = {};
-            Object.keys(sellersRaw).forEach(key => {
-                sellersCache[key] = sellersRaw[key];
-            });
-            
-            customersCache = {};
-            Object.keys(customersRaw).forEach(key => {
-                customersCache[key] = customersRaw[key];
-            });
-            
-            if (Object.keys(sellersCache).length === 0) {
-                throw new Error('Sellers empty');
-            }
-            if (Object.keys(customersCache).length === 0) {
-                throw new Error('Customers empty');
-            }
-        } catch (error) {
-            const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
-            const localCustomers = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
-            sellersCache = localSellers;
-            customersCache = localCustomers;
-        }
+const buildIndexFromObject = (obj) => {
+    const result = {};
+    Object.keys(obj).forEach(key => {
+        result[key] = obj[key];
+    });
+    return result;
+};
+
+const getIndexes = async () => {
+    if (sellersCache && customersCache) {
+        return { sellers: sellersCache, customers: customersCache };
     }
+    
+    try {
+        const [sellersRes, customersRes] = await Promise.all([
+            fetch(`${BASE_URL}/sellers`),
+            fetch(`${BASE_URL}/customers`)
+        ]);
+        
+        if (!sellersRes.ok) throw new Error(`Sellers HTTP ${sellersRes.status}`);
+        if (!customersRes.ok) throw new Error(`Customers HTTP ${customersRes.status}`);
+        
+        const sellersRaw = await sellersRes.json();
+        const customersRaw = await customersRes.json();
+
+        sellersCache = buildIndexFromObject(sellersRaw);
+        customersCache = buildIndexFromObject(customersRaw);
+        
+        console.log('✅ Справочники загружены с сервера:', {
+            sellers: Object.keys(sellersCache).length,
+            customers: Object.keys(customersCache).length
+        });
+        
+    } catch (error) {
+        console.error('❌ Ошибка загрузки справочников:', error.message);
+
+        const localSellersArray = sourceData.sellers;
+        const localCustomersArray = sourceData.customers;
+        
+        sellersCache = buildIndexFromArray(localSellersArray, 'id', v => `${v.first_name} ${v.last_name}`);
+        customersCache = buildIndexFromArray(localCustomersArray, 'id', v => `${v.first_name} ${v.last_name}`);
+        
+        console.log('📁 Используются локальные справочники:', {
+            sellers: Object.keys(sellersCache).length,
+            customers: Object.keys(customersCache).length
+        });
+    }
+    
     return { sellers: sellersCache, customers: customersCache };
 };
 
@@ -57,6 +79,8 @@ const getAllRecords = async () => {
     
     try {
         const response = await fetch(`${BASE_URL}/records`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
         const data = await response.json();
         
         let items = data.items || data;
@@ -69,8 +93,12 @@ const getAllRecords = async () => {
         }
         
         recordsCache = items.map(mapRecord);
+        console.log('✅ Записи загружены с сервера:', recordsCache.length);
         return recordsCache;
+        
     } catch (error) {
+        console.error('❌ Ошибка загрузки записей:', error.message);
+        
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
@@ -78,18 +106,19 @@ const getAllRecords = async () => {
         recordsCache = sourceData.purchase_records.map(item => ({
             id: item.receipt_id,
             date: item.date,
-            seller: sellersCache[item.seller_id] || 'Unknown',
-            customer: customersCache[item.customer_id] || 'Unknown',
+            seller: sellersCache?.[item.seller_id] || 'Unknown',
+            customer: customersCache?.[item.customer_id] || 'Unknown',
             total: item.total_amount
         }));
         
+        console.log('📁 Используются локальные записи:', recordsCache.length);
         return recordsCache;
     }
 };
 
 const getRecords = async (query = {}) => {
     let items = await getAllRecords();
-    
+
     if (query.filter) {
         const f = query.filter;
         items = items.filter(item => {
@@ -101,7 +130,7 @@ const getRecords = async (query = {}) => {
             return true;
         });
     }
-    
+
     if (query.search) {
         const s = query.search.toLowerCase();
         items = items.filter(item =>
@@ -110,7 +139,7 @@ const getRecords = async (query = {}) => {
             item.seller.toLowerCase().includes(s)
         );
     }
-    
+
     if (query.sort) {
         const [field, order] = query.sort.split(':');
         items.sort((a, b) => {
@@ -119,7 +148,7 @@ const getRecords = async (query = {}) => {
             return 0;
         });
     }
-    
+
     const limit = parseInt(query.limit) || 10;
     const page = parseInt(query.page) || 0;
     const start = page * limit;
