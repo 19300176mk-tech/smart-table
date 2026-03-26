@@ -1,4 +1,3 @@
-import { makeIndex } from "./lib/utils.js";
 import { data as sourceData } from "./data/dataset_1.js";
 
 const BASE_URL = 'https://webinars.webdev.education-services.ru/sp7-api';
@@ -10,29 +9,55 @@ let recordsCache = null;
 const mapRecord = (item) => ({
     id: item.receipt_id,
     date: item.date,
-    seller: sellersCache[item.seller_id],
-    customer: customersCache[item.customer_id],
+    seller: sellersCache?.[item.seller_id] || 'Unknown',
+    customer: customersCache?.[item.customer_id] || 'Unknown',
     total: item.total_amount
 });
 
-const getIndexes = async () => {
-    if (!sellersCache || !customersCache) {
-        try {
-            const [sellersRes, customersRes] = await Promise.all([
-                fetch(`${BASE_URL}/sellers`),
-                fetch(`${BASE_URL}/customers`)
-            ]);
-            const sellersRaw = await sellersRes.json();
-            const customersRaw = await customersRes.json();
-            
-            sellersCache = makeIndex(sellersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
-            customersCache = makeIndex(customersRaw, 'id', v => `${v.first_name} ${v.last_name}`);
-        } catch (error) {
-            console.warn('Ошибка загрузки справочников, использую локальные', error);
-            sellersCache = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
-            customersCache = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+const buildIndexFromObject = (obj) => {
+    const result = {};
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            result[key] = obj[key];
         }
     }
+    return result;
+};
+
+const buildIndexFromArray = (arr, idField, valueGetter) => {
+    const result = {};
+    for (let i = 0; i < arr.length; i++) {
+        const item = arr[i];
+        result[item[idField]] = valueGetter(item);
+    }
+    return result;
+};
+
+const getIndexes = async () => {
+    if (sellersCache && customersCache) {
+        return { sellers: sellersCache, customers: customersCache };
+    }
+    
+    try {
+        const [sellersRes, customersRes] = await Promise.all([
+            fetch(`${BASE_URL}/sellers`),
+            fetch(`${BASE_URL}/customers`)
+        ]);
+        
+        const sellersRaw = await sellersRes.json();
+        const customersRaw = await customersRes.json();
+        
+        sellersCache = buildIndexFromObject(sellersRaw);
+        customersCache = buildIndexFromObject(customersRaw);
+        
+        console.log('✅ Справочники загружены с сервера');
+    } catch (error) {
+        console.warn('❌ Ошибка загрузки справочников, использую локальные');
+        
+        sellersCache = buildIndexFromArray(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
+        customersCache = buildIndexFromArray(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+    }
+    
     return { sellers: sellersCache, customers: customersCache };
 };
 
@@ -41,34 +66,56 @@ const getAllRecords = async () => {
     
     try {
         const response = await fetch(`${BASE_URL}/records`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
+
+        let allItems = [];
+
+        if (data.total && data.items) {
+            const total = data.total;
+            const pageSize = data.items.length;
+            const totalPages = Math.ceil(total / pageSize);
+
+            allItems = [...data.items];
+            
+            for (let page = 1; page < totalPages; page++) {
+                const pageResponse = await fetch(`${BASE_URL}/records?page=${page}&limit=${pageSize}`);
+                const pageData = await pageResponse.json();
+                allItems.push(...pageData.items);
+            }
+        } else {
+            allItems = Array.isArray(data) ? data : (data.items || Object.values(data));
+        }
         
         if (!sellersCache || !customersCache) {
             await getIndexes();
         }
         
-        recordsCache = data.items.map(mapRecord);
+        recordsCache = allItems.map(mapRecord);
+        console.log('✅ Записи загружены с сервера:', recordsCache.length);
         return recordsCache;
+        
     } catch (error) {
-        console.warn('Ошибка загрузки с сервера, использую локальные данные', error);
-        const localSellers = makeIndex(sourceData.sellers, 'id', v => `${v.first_name} ${v.last_name}`);
-        const localCustomers = makeIndex(sourceData.customers, 'id', v => `${v.first_name} ${v.last_name}`);
+        console.warn('❌ Ошибка загрузки записей, использую локальные', error);
+        
+        if (!sellersCache || !customersCache) {
+            await getIndexes();
+        }
+        
         recordsCache = sourceData.purchase_records.map(item => ({
             id: item.receipt_id,
             date: item.date,
-            seller: localSellers[item.seller_id],
-            customer: localCustomers[item.customer_id],
+            seller: sellersCache?.[item.seller_id] || 'Unknown',
+            customer: customersCache?.[item.customer_id] || 'Unknown',
             total: item.total_amount
         }));
+        
         return recordsCache;
     }
 };
 
 const getRecords = async (query = {}) => {
     let items = await getAllRecords();
-    const total = items.length;
-
+    
     if (query.filter) {
         const f = query.filter;
         items = items.filter(item => {
@@ -80,7 +127,7 @@ const getRecords = async (query = {}) => {
             return true;
         });
     }
-
+    
     if (query.search) {
         const s = query.search.toLowerCase();
         items = items.filter(item =>
@@ -89,7 +136,7 @@ const getRecords = async (query = {}) => {
             item.seller.toLowerCase().includes(s)
         );
     }
-
+    
     if (query.sort) {
         const [field, order] = query.sort.split(':');
         items.sort((a, b) => {
@@ -98,7 +145,7 @@ const getRecords = async (query = {}) => {
             return 0;
         });
     }
-
+    
     const limit = parseInt(query.limit) || 10;
     const page = parseInt(query.page) || 0;
     const start = page * limit;
